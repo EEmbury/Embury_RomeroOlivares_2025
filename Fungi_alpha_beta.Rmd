@@ -1,0 +1,339 @@
+---
+title: '<span style = ''font-size:14pt;''>**Microbial Communities in the changing vegetation of the Chihuahuan Desert 
+**</span>'
+subtitle: '<span style = ''font-size:12pt;''> Fungi Alpha and Beta Diversity
+</span>'
+author: "Emily Embury"
+date: "`r Sys.Date()`"
+output: html_document
+---
+<style type="text/css">
+/* Whole document: */ 
+body{
+  font-size: 12pt;
+}
+/* Headers */
+h1{
+  font-size: 12pt;
+}
+</style>
+
+---
+
+```{r include = FALSE}
+knitr::opts_chunk$set(
+  echo = TRUE,              
+  warning = FALSE,       
+  message = FALSE,  
+  cache = FALSE,        
+  fig.align = "center", 
+  fig.height = 4,
+  fig.width = 6,
+  class.source="bg-warning",
+  class.output="bg-success"
+)
+
+```
+
+
+# **Import qiime formatted data**
+  - https://blog.codyglickman.com/2018/10/qiime2-to-phyloseq.html
+
+```{r import_data}
+
+library(phyloseq)
+library(dplyr)
+library(tidyverse)
+library(vegan)
+
+
+load("~/Desktop/Master_Data/Masters_R/NMSU_Soil_Microbial_Analysis/fungi_dada2_data.RData") 
+#contains taxa and otu table
+
+
+#import metadata
+sam <- read.csv("~/Desktop/Master_Data/Masters_R/NMSU_Soil_Microbial_Analysis/Fungi/fungi_oct_28_metadata.csv", header = TRUE) 
+rownames(sam) <- sam$sample.id
+
+#add month_veg row to data
+sam$month_veg = paste(sam$month, sam$vegetation, sep="-")
+
+#adjust sample data labels
+sam$Vegetation <- factor(sam$vegetation, levels = c("Grass", "Mesquite_grass", "Mesquite"), 
+                  labels = c("Grass", "Ecotone", "Mesquite")) 
+
+sam$Month <- factor(sam$month, levels = c("Oct", "Jan", "Mar", "May", "Jul"), 
+                  labels = c("October", "January", "March", "May", "July"))
+
+#compile data into phyloseq object
+phylo_raw <- phyloseq(otu_table(seqtab.nochim, taxa_are_rows = FALSE), 
+               sample_data(sam), 
+               tax_table(taxa))
+
+
+dna <- Biostrings::DNAStringSet(taxa_names(phylo_raw))
+names(dna) <- taxa_names(phylo_raw)
+phylo_raw <- merge_phyloseq(phylo_raw, dna)
+taxa_names(phylo_raw) <- paste0("ASV", seq(ntaxa(phylo_raw)))
+phylo_raw
+
+#Add names to biom table and check phyloseq objects
+colnames(tax_table(phylo_raw))= c("Kingdom","Phylum","Class","Order","Family","Genus", "Species")
+```
+
+# **remove controls + contaminants**
+
+```{r decontam}
+library(decontam)
+
+# threshold 0.5, identifies 0 contaminants
+contamdf.prev05 <- isContaminant(phylo_raw, method="prevalence", neg="neg", threshold=0.5)
+table(contamdf.prev05$contaminant)
+
+
+#remove any left over controls so they don't impact rarefy
+#remove sample 129 and 93 as it had very low reads after filtering, don't want them to impact rarefy
+phylo_rm_cntrl = subset_samples(phylo_raw, sample.id != "Control1" & sample.id != "ControlL2")
+
+
+```
+
+
+# **Alpha Diversity**
+  - https://joey711.github.io/phyloseq/plot_richness-examples.html
+  - https://rpubs.com/lconteville/713954 
+
+
+- https://doi.org/10.1016/j.resmic.2018.03.004 states that shannon is the best index to use
+
+- "Simpson’s index (D) Estimator of species richness and species evenness: more weight on species evenness" -- https://doi.org/10.4014/jmb.1709.09027 
+
+```{r rarefy}
+
+# Extract abundance matrix from the phyloseq object
+OTU1 = as(otu_table(phylo_rm_cntrl), "matrix")
+# Coerce to data.frame
+OTUdf = as.data.frame(OTU1)
+
+#### rarefy with vegan ####
+
+#view rarefication plot to determine depth to rarefy at
+#rarecurve(OTUdf, step = 100, cex = 0.75, las = 1) 
+
+depths <- as.data.frame(sample_sums(phylo_rm_cntrl))
+# lowest depth is 17574
+
+rare <- rrarefy(OTUdf, 17574)
+
+#rebuild phyloseq with new rare otu table
+rare_phylo <- phyloseq(otu_table(rare, taxa_are_rows = FALSE), 
+               sample_data(sam)) 
+     
+```
+
+```{r alpha_Shannon}
+
+richness <- estimate_richness(rare_phylo)
+
+#Shannon
+anova.sh.veg = aov(richness$Shannon ~ sample_data(rare_phylo)$Vegetation*sample_data(rare_phylo)$Month + sample_data(rare_phylo)$proximity)
+summary(anova.sh.veg)
+
+sh.veg <- capture.output(summary(anova.sh.veg))
+#write.table(sh.veg, file = "~/Desktop/Master_Data/Masters_R/NMSU_Soil_Microbial_Analysis/fun_shannon_aov.txt", sep = ",", quote = FALSE, row.names = T)
+
+#post hoc
+tukey.sh <- TukeyHSD(anova.sh.veg)
+tukey.sh$`sample_data(rare_phylo)$Vegetation`
+
+#Simpson
+anova.sim.veg = aov(richness$Simpson ~ sample_data(rare_phylo)$Vegetation*sample_data(rare_phylo)$Month + sample_data(rare_phylo)$proximity)
+summary(anova.sim.veg)
+
+#post hoc
+tukey.sim <- TukeyHSD(anova.sim.veg)
+tukey.sim$`sample_data(rare_phylo)$Vegetation`
+
+sim.veg <- capture.output(summary(anova.sim.veg))
+#write.table(sim.veg, file = "~/Desktop/Master_Data/Masters_R/NMSU_Soil_Microbial_Analysis/fun_simpson_aov.txt", sep = ",", quote = FALSE, row.names = T)
+
+
+#getiing tukey letters for plot
+library(multcompView)
+Cld_sim=multcompLetters4(anova.sim.veg, tukey.sim)
+print(Cld_sim)
+Cld_sim= as.data.frame.list(Cld_sim$`sample_data(rare_phylo)$Vegetation`)
+Cld_sim <- tibble::rownames_to_column(Cld_sim, "Vegetation")
+
+Cld_sh=multcompLetters4(anova.sh.veg, tukey.sh)
+print(Cld_sh)
+Cld_sh= as.data.frame.list(Cld_sh$`sample_data(rare_phylo)$Vegetation`)
+Cld_sh <- tibble::rownames_to_column(Cld_sh, "Vegetation")
+
+
+#check anova assumptions
+par(mfrow = c(1,2)) #puts the plots next to each other
+qqnorm(anova.sh.veg$residuals) #normal q-q plot, tests normality
+qqline(anova.sh.veg$residuals, col = "red") #line of fit on q-q plot
+plot(anova.sh.veg$fitted.values, anova.sh.veg$residuals, main = "Residuals vs Fitted", xlab = "Fitted Values", 
+     ylab = "Residuals") #residuals vs. fitted, test variance
+abline(h=0, col = "red") 
+
+
+
+alpha_veg_sh <- plot_richness(rare_phylo, x = "Vegetation", measures = c("Shannon"))
+alpha_veg_sh + geom_boxplot()
+
+#shannon plot
+alpha_mo_sh <- plot_richness(rare_phylo, x = "Vegetation", measures = c("Shannon"))
+fun_alpha_sh <- alpha_mo_sh + 
+  geom_boxplot(show.legend = FALSE, aes(fill=Vegetation)) +
+  theme_linedraw()+
+  stat_summary(fun=mean, geom="point", shape=18, size = 2, color="lightgray") +
+  theme(plot.title = element_text(face = "bold", hjust = 0.5))+
+  scale_y_continuous(
+  labels = scales::number_format(accuracy = 0.1))+ 
+   theme(axis.title.x = element_blank(), axis.text.x = element_text(), axis.ticks.x   = element_blank(), axis.title.y = element_blank()) + 
+  geom_text(data = Cld_sh,
+            aes(x=Vegetation,y=5,label=monospacedLetters),
+            vjust = 1, 
+            hjust = .2)+
+ scale_fill_manual(values=c("Mesquite" ="#c1292e", "Ecotone" = "#e1bc29", "Grass" = "#679436", name = "Vegetation"))
+
+fun_alpha_sh
+
+
+#simpson plot
+alpha_mo_sim <- plot_richness(rare_phylo, x = "Vegetation", measures = c("Simpson"))
+alpha_mo_sim
+
+fun_alpha_sim <- alpha_mo_sim + 
+  geom_boxplot(show.legend = FALSE, aes(fill=Vegetation)) +
+  theme_linedraw()+
+  stat_summary(fun=mean, geom="point", shape=18, size = 2, color="lightgray") +
+  theme(plot.title = element_text(face = "bold", hjust = 0.5))+
+  scale_y_continuous(
+  labels = scales::number_format(accuracy = 0.1))+ 
+   theme(axis.title.x = element_blank(), axis.text.x = element_text(), axis.ticks.x   = element_blank(), axis.title.y = element_blank()) + 
+  geom_text(data = Cld_sim,
+            aes(x=Vegetation,y=1,label=monospacedLetters),
+            vjust = 1, 
+            hjust = .2)+
+ scale_fill_manual(values=c("Mesquite" ="#c1292e", "Ecotone" = "#e1bc29", "Grass" = "#679436", name = "Vegetation"))
+
+fun_alpha_sim
+
+#ggsave(file="~/Desktop/Master_Data/Masters_R/NMSU_Soil_Microbial_Analysis/images/fun_alpha.png", device = png, plot=fun_alpha, width=7, height=5)
+```
+
+```{r}
+#merge figures into one
+ library(ggpubr)
+figure <- ggarrange(fun_alpha_sh, fun_alpha_sim, 
+          ncol = 2)
+figure
+
+final <- annotate_figure(figure,
+              top = text_grob("Fungal Alpha Diversity", color = "black", face = "bold", size = 12),
+              left = text_grob("Alpha Diversity Measure", color = "black", rot = 90), 
+              bottom = text_grob("Month", color = "black"))
+              
+final
+
+#ggsave(file="~/Desktop/Master_Data/Masters_R/NMSU_Soil_Microbial_Analysis/images/fun_alpha_with_letters.png", device = png, plot=final, width=7, height=5)
+
+```
+
+# **Beta Diversity**
+
+NOT USED IN FINAL PUBLICATION
+
+- http://evomics.org/wp-content/uploads/2016/01/phyloseq-Lab-01-Answers.html
+- https://www.youtube.com/watch?v=oLf0EpMJ4yA 
+
+- adonis = essentially an ANOVA for distances
+- betadisper = testing for significant different variation
+
+
+- "Furthermore, beta-diversity measures might be chosen to make it easier to assess a specific hypothesis, such as changes in microbiome composition over time. For example, a Bray Curtis distance that uses all the abundance differences may be more sensitive to examine gradients of diversity with location or time" -- https://doi.org/10.1016/j.csbj.2022.04.032 
+
+-  https://doi.org/10.1111/2041-210X.13115 = proportions and rarefy are the best way to normalize for BC distance in community analyses
+
+  
+```{r bray_dist_and_plot}
+
+# calculate Bray-Curtis distance
+DistBC <- phyloseq::distance(rare_phylo, method = "bray")
+
+#ordinate bray distances
+ordBC <- ordinate(rare_phylo, method = "NMDS", distance = DistBC)
+
+
+#plot distances
+p <- plot_ordination(rare_phylo, ordBC, color = "Vegetation") + 
+  geom_point(size = 3, aes(shape = Month)) +
+  ggtitle("Fungal Community Composition Across Vegetation Types")+
+    theme_linedraw()+
+  stat_ellipse()+
+  scale_color_manual(values=c("Mesquite" ="#c1292e", "Grass-Mesquite" = "#e1bc29", "Grass" = "#679436", name = "Vegetation"))+
+  scale_shape_discrete(name="Month")+
+  theme(plot.title = element_text(face = "bold", hjust = 0.5))
+
+p
+
+#library(svglite)
+#ggsave(file="~/Desktop/Master_Data/Masters_R/NMSU_Soil_Microbial_Analysis/images/fun_beta.png", plot=p, width=7, height=5)
+
+```
+
+```{r beta_statistics}
+#### Statistics ####
+
+#create data frame of metadata
+sampleDF <-  data.frame(sample_data(rare_phylo))
+
+# adonis : Analysis of variance using distance matrices
+adonis <- adonis2(DistBC ~ sampleDF$Vegetation*sampleDF$Month, strata = sampleDF$proximity, data = sampleDF)
+adonis
+adonis_fun <- capture.output(adonis)
+
+#write.table(adonis_fun, file = "~/Desktop/Master_Data/Masters_R/NMSU_Soil_Microbial_Analysis/fun_beta_adonis.txt", sep = ",", quote = FALSE, row.names = T)
+
+#### significance of vegetation ####
+library(pairwiseAdonis)
+pairwise.adonis(DistBC, phyloseq::sample_data(rare_phylo)$Vegetation)
+
+#set proximity to vegetation as a random variable
+Vegetation = sample_data(rare_phylo)$Vegetation
+proximity1 = sample_data(rare_phylo)$proximity1
+
+pairwise.adonis2(DistBC ~ Vegetation, strata = "proximity1", data= data.frame(sample_data(rare_phylo)))
+
+# betadisper - analysis of multivariate homogeneity of group dispersion (variances)
+beta <- betadisper(DistBC, sampleDF$vegetation)
+anova(beta)
+permutest(beta)
+
+
+#### significance of month ####
+library(pairwiseAdonis)
+pairwise.adonis(DistBC, phyloseq::sample_data(rare_phylo)$Month)
+
+Month = sample_data(rare_phylo)$Month
+proximity1 = sample_data(rare_phylo)$proximity1
+
+pairwise.adonis2(DistBC ~ Month, strata = "proximity1", data= data.frame(sample_data(rare_phylo)))
+
+
+
+# betadisper - analysis of multivariate homogeneity of group dispersion (variances)
+beta <- betadisper(DistBC, sampleDF$Month)
+anova(beta)
+permutest(beta)
+
+```
+
+```{r session_info}
+library(devtools)
+session_info()
+```
