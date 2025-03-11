@@ -1,0 +1,225 @@
+---
+title: '<span style = ''font-size:14pt;''>**Microbial Communities in the changing vegetation of the Chihuahuan Desert 
+**</span>'
+subtitle: '<span style = ''font-size:12pt;''> Site Weather
+</span>'
+author: "Emily Embury"
+date: "`r Sys.Date()`"
+output: html_document
+---
+<style type="text/css">
+/* Whole document: */ 
+body{
+  font-size: 12pt;
+}
+/* Headers */
+h1{
+  font-size: 12pt;
+}
+</style>
+
+---
+
+```{r include = FALSE}
+knitr::opts_chunk$set(
+  echo = TRUE,              
+  warning = FALSE,       
+  message = FALSE,  
+  cache = FALSE,        
+  fig.align = "center", 
+  fig.height = 10,
+  fig.width = 6,
+  class.source="bg-warning",
+  class.output="bg-success"
+)
+
+```
+
+# **Temperature, humidity, and precipitation data** 
+
+From John Anderson:
+
+- Study 611 Plot G3 -> Study 548 CSIS Block-8 
+  - Distance from plot to met station:  ~92m NNW
+- Study 611 Plot MG3 -> Study 548 CSIS Block-7   
+  - Distance from plot to met station:  ~192m SW
+- Study 611 Plot M1 -> Study 548 CSIS Block-11    
+  - Distance from plot to met station:  ~135m NNW
+
+**Block 8** Grass site
+
+Anderson, J. 2023. Jornada Basin LTER Cross-scale Interactions Study (CSIS) Block 8 meteorological station: Daily summary data: 2013 - ongoing ver 33. Environmental Data Initiative. https://doi.org/10.6073/pasta/bf8b5899b2e6bace4ceefa48fd3c970b (Accessed 2023-09-10).
+
+**Block 7** Mesquite-Grass
+
+Anderson, J. 2023. Jornada Basin LTER Cross-scale Interactions Study (CSIS) Block 7 meteorological station: Daily summary data: 2013 - ongoing ver 35. Environmental Data Initiative. https://doi.org/10.6073/pasta/c6d90223879a86a0825e3aeddb4b1619 (Accessed 2023-09-11).
+
+**Block 11** Mesquite
+
+Anderson, J. 2023. Jornada Basin LTER Cross-scale Interactions Study (CSIS) Block 11 meteorological station: Daily summary data: 2013 - ongoing ver 32. Environmental Data Initiative. https://doi.org/10.6073/pasta/c11ab044ada8ea13b5e6d1d2e20e7494 (Accessed 2023-09-11).
+
+```{r}
+library(ggplot2)
+library(lubridate)
+
+weather <- read.csv("Raw_data/JRN_temp_humid/all_weather.csv", header = TRUE)
+weather$Date <- as.Date(weather$Date)
+
+#test for significant differences in temp across veg type
+aov_temp <- aov(weather$Air_TempC_Avg ~ weather$Month*weather$SiteID)
+summary(aov_temp)
+
+par(mfrow = c(1,2)) #puts the plots next to each other
+qqnorm(aov_temp$residuals) #normal q-q plot, tests normality
+qqline(aov_temp$residuals, col = "red") #line of fit on q-q plot
+plot(aov_temp$fitted.values, aov_temp$residuals, main = "Residuals vs Fitted", xlab = "Fitted Values", ylab = "Residuals") #residuals vs. fitted, test variance
+abline(h=0, col = "red") 
+
+    # no significant variation between site ID in terms of temp
+
+
+#test for significant differences in humid across veg type
+
+aov_rh <- aov(weather$Relative_Humidity_Avg ~ weather$Month*weather$SiteID)
+summary(aov_rh)
+
+par(mfrow = c(1,2)) #puts the plots next to each other
+qqnorm(aov_rh$residuals) #normal q-q plot, tests normality
+qqline(aov_rh$residuals, col = "red") #line of fit on q-q plot
+plot(aov_rh$fitted.values, aov_rh$residuals, main = "Residuals vs Fitted", xlab = "Fitted Values", ylab = "Residuals") #residuals vs. fitted, test variance
+abline(h=0, col = "red") 
+
+  # no significant variation between site ID in terms of rel. humidity
+
+
+#test for significant differences in precip across veg type
+
+library(dplyr)
+only_measured_precip <- filter(weather, Ppt_mm_Tot > 0)
+  
+
+aov_precip <- aov(log(only_measured_precip$Ppt_mm_Tot) ~ only_measured_precip$Month*only_measured_precip$SiteID)
+summary(aov_precip)
+
+par(mfrow = c(1,2)) #puts the plots next to each other
+qqnorm(aov_precip$residuals) #normal q-q plot, tests normality
+qqline(aov_precip$residuals, col = "red") #line of fit on q-q plot
+plot(aov_precip$fitted.values, aov_precip$residuals, main = "Residuals vs Fitted", xlab = "Fitted Values", ylab = "Residuals") #residuals vs. fitted, test variance
+abline(h=0, col = "red") 
+
+### now that I know that there is no significant difference in the site types I will average the daily data points
+
+library("dplyr")                             
+ 
+# Specify data frame
+SiteID_mean <- weather %>%
+    # Specify group indicator, column, function
+    group_by(SiteID, Month) %>%
+    # Calculate the mean of the "Frequency" column for each group
+    summarise_at(vars(Ppt_mm_Tot),
+                 list(Mean_Precip = mean)) 
+
+
+# Specify data frame
+SiteID_mean_weather <- weather %>%
+    # Specify group indicator, column, function
+    group_by(Date) %>%
+    # Calculate the mean of the "x" column for each group
+    summarise_at(vars("Ppt_mm_Tot", "Relative_Humidity_Avg", "Air_TempC_Avg"), mean, na.rm = T)
+
+#Add month column      
+SiteID_mean_weather$Month = SiteID_mean_weather$Date
+
+SiteID_mean_weather$Month <- as.Date(SiteID_mean_weather$Month)
+
+SiteID_mean_weather$Month <- format(SiteID_mean_weather$Month, format = "%B")
+
+
+#### plot data
+
+### daily total precipitation w/average data
+precip <- ggplot(SiteID_mean_weather[which(SiteID_mean_weather$Ppt_mm_Tot >0),], aes(x=Date, y=Ppt_mm_Tot, color = Month))+
+  geom_point() +
+  scale_x_date(date_labels = "%B", date_breaks = "1 month")+
+    theme_linedraw()+
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1), legend.position = "none")+
+  #ggtitle("2022-2023 Monthly Precipitation")+
+  ylab("Precipitation (mm)")+
+  xlab("Month")+
+  scale_colour_manual(values=c("October" ="#c1292e", "January" = "#e1bc29", "March" = "#679436", "May" = "#4895ef" , "July" ="#8187dc"))
+
+### daily average humidity w/average data
+relhumid <- ggplot(SiteID_mean_weather, aes(x=Date, y=Relative_Humidity_Avg, color = Month))+
+  geom_point() +
+  scale_x_date(date_labels = "%B", date_breaks = "1 month")+
+  #ggtitle("2022-2023 Monthly Relative Humidity")+
+  ylab("Average Relative Humidity (%)")+
+  theme_linedraw()+
+  theme(axis.title.x = element_blank(), axis.text.x = element_blank(), axis.ticks.x   = element_blank(), legend.position = "none") + 
+  scale_colour_manual(values=c("October" ="#c1292e", "January" = "#e1bc29", "March" = "#679436", "May" = "#4895ef" , "July" ="#8187dc"))
+
+
+### daily average temperature w/averages
+temp <- ggplot(SiteID_mean_weather, aes(x=Date, y=Air_TempC_Avg, color = Month))+
+  geom_point() +
+  scale_x_date(date_labels = "%B", date_breaks = "1 month")+
+  ggtitle("October 2022- July 2023 Monthly Weather")+
+  ylab("Average Air Temperature (C)")+
+  theme_linedraw()+
+  theme(axis.title.x = element_blank(), axis.text.x = element_blank(),legend.position = "none", axis.ticks.x   = element_blank(), plot.title = element_text(face = "bold", hjust = 0.5)) + 
+  scale_colour_manual(values=c("October" ="#c1292e", "January" = "#e1bc29", "March" = "#679436", "May" = "#4895ef" , "July" ="#8187dc"))
+
+library(ggpubr)
+weather <- ggarrange(temp, relhumid, precip, ncol=1, nrow=3)
+weather
+
+library(svglite)
+#ggsave(file="~/Desktop/Master_Data/Masters_R/NMSU_Soil_Microbial_Analysis/images/weather.png", device = png, plot=weather, width=7, height=7)
+
+```
+
+#**Calculate monthly averages**
+```{r}
+library(dplyr)
+
+weather_avg <- SiteID_mean_weather %>%
+  group_by(Month) %>%
+  summarise_at(vars(Relative_Humidity_Avg, Ppt_mm_Tot, Air_TempC_Avg), list(name = mean))
+
+
+#### precip
+weather$month_site = paste(weather$Month, weather$SiteID, sep="_")
+
+weather_sum <- aggregate(weather$Ppt_mm_Tot, by=list(category=weather$month_site), FUN=sum)
+
+library(dplyr)
+library(tidyr)
+
+weather_sum_2 <- weather_sum %>% separate(category, c('Month', 'SiteID'))
+
+precip_sum_avg <- weather_sum_2 %>%
+  group_by(Month) %>%
+  summarise_at(vars(x), list(name = mean))
+
+sum(precip_sum_avg$name)
+
+
+### temp
+
+weather_no_na <- na.omit(weather)
+weather_avg <- aggregate(weather_no_na$Air_TempC_Avg, by=list(category=weather_no_na$month_site), FUN=mean)
+
+
+
+library(dplyr)
+library(tidyr)
+
+weather_avg_2 <- weather_avg %>% separate(category, c('Month', 'SiteID'))
+temp_avg <- weather_avg_2 %>%
+  group_by(Month) %>%
+  summarise_at(vars(x), list(name = mean))
+
+
+
+#write_csv(weather_avg, "Raw_data/JRN_temp_humid/monthly_avg_weather.csv")
+```
