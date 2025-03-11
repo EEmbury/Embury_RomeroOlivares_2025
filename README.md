@@ -11,3 +11,14 @@ The DADA2 pipeline was utilized for the sequence processing. The following tutor
 Research conducted by Emily Embury for Master's degree research at New Mexico State University. Conducted under the guidance of Dr. Adriana Romero-Olivares.
 
 Analyses conducted on the NMSU HPC Discovery Cluster
+
+## Fungal and bacterial statistical analyses
+
+Analyses: 
+### PLFA (file: PLFA_2025.Rmd)
+### Vegetation Cover (file: vegetation_cover.Rmd)
+### Temperature, Humidity, Precipitation (file: site_weather.Rmd)
+### Alpha Diversty (files: Fungi_alpha_beta.Rmd; Bacteria_alpha_beta.Rmd)
+### Co-Occurence Networks (files: fungal_network.Rmd; bacteria_network_analysis.Rmd)
+### Indicator Species (files: Fungal_indicator_species.Rmd; Bacterial_Indicator_Species.Rmd)
+### Differential Abundance Analysis (files: fungi_daa.Rmd; bacteria_differential_abundance_analysis.Rmd)
