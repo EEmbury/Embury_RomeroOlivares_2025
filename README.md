@@ -16,9 +16,15 @@ Analyses conducted on the NMSU HPC Discovery Cluster
 
 Analyses: 
   PLFA (file: PLFA_2025.Rmd)
+  
   Vegetation Cover (file: vegetation_cover.Rmd)
+  
   Temperature, Humidity, Precipitation (file: site_weather.Rmd)
+  
   Alpha Diversty (files: Fungi_alpha_beta.Rmd; Bacteria_alpha_beta.Rmd)
+  
   Co-Occurence Networks (files: fungal_network.Rmd; bacteria_network_analysis.Rmd)
+  
   Indicator Species (files: Fungal_indicator_species.Rmd; Bacterial_Indicator_Species.Rmd)
+  
   Differential Abundance Analysis (files: fungi_daa.Rmd; bacteria_differential_abundance_analysis.Rmd)
