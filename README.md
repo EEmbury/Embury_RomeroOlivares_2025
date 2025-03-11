@@ -15,6 +15,7 @@ Analyses conducted on the NMSU HPC Discovery Cluster
 ## Fungal and bacterial statistical analyses
 
 Analyses: 
+
   **PLFA** (file: PLFA_2025.Rmd)
   
   **Vegetation Cover** (file: vegetation_cover.Rmd)
